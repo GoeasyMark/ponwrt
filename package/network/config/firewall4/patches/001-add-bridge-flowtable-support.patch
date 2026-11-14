@@ -58,7 +58,15 @@ Signed-off-by: pbs05 <27010143+pbs05@users.noreply.github.com>
  		let state = null;
 --- a/root/usr/share/firewall4/templates/ruleset.uc	2026-07-01 09:54:35.813882416 +0300
 +++ b/root/usr/share/firewall4/templates/ruleset.uc	2026-07-01 09:55:01.833025066 +0300
-@@ -469,4 +469,31 @@
+@@ -140,3 +140,7 @@
+ {% if (length(flowtable_devices) > 0): %}
++{% if (fw4.default_option("flow_offloading_hw")): %}
++		meta nfproto ipv4 meta l4proto { tcp, udp } flow offload @ft;
++{% else: %}
+ 		meta l4proto { tcp, udp } flow offload @ft;
++{% endif %}
+ {% endif %}
+@@ -469,4 +473,31 @@
  	}
  {% fw4.includes('table-append') %}
  }
