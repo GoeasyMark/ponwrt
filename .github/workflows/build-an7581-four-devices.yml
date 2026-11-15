@@ -54,13 +54,12 @@ env:
 jobs:
   build:
     name: Build ${{ matrix.device }}
-    if: ${{ github.event_name == 'push' || inputs.device == 'all' || inputs.device == matrix.device }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        device: [040g-md, 5585-ct, 5585-cu, zn515, 040g-mf]
+        device: ${{ (github.event_name == 'push' || inputs.device == 'all') && fromJSON('["040g-md","5585-ct","5585-cu","zn515","040g-mf"]') || fromJSON(format('["{0}"]', inputs.device)) }}
 
     steps:
       - name: Checkout repository
