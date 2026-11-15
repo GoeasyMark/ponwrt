@@ -144,7 +144,7 @@ jobs:
               else:
                   out.append(line)
           if not found:
-              raise SystemExit("Profile symbol not found in " + __import__("os").environ.get("DEVICE_CONFIG", "device config") + ": " + selected)
+              raise SystemExit("Profile symbol not found in merged .config: " + selected)
           with open(path, "w", encoding="utf-8") as f:
               f.writelines(out)
           print("Selected exactly one device-specific rootfs profile:", profile)
@@ -166,7 +166,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .ccache
-          key: ponwrt-an7581-${{ matrix.device }}-${{ hashFiles('configs/*.config') }}-${{ github.sha }}
+          key: ponwrt-airoha-${{ matrix.device }}-${{ hashFiles('configs/*.config') }}-${{ github.sha }}
           restore-keys: |
             ponwrt-an7581-${{ matrix.device }}-${{ hashFiles('configs/*.config') }}-
             ponwrt-an7581-${{ matrix.device }}-
@@ -223,7 +223,7 @@ jobs:
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PonWrt-AN7581-${{ matrix.device }}-${{ github.run_number }}
+          name: PonWrt-Airoha-${{ matrix.device }}-${{ github.run_number }}
           path: output/*
           if-no-files-found: error
           retention-days: 30
@@ -232,8 +232,8 @@ jobs:
         if: inputs.upload_release == true
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: an7581-${{ matrix.device }}-${{ github.run_number }}
-          name: PonWrt AN7581 ${{ matrix.device }} build ${{ github.run_number }}
+          tag_name: airoha-${{ matrix.device }}-${{ github.run_number }}
+          name: PonWrt Airoha ${{ matrix.device }} build ${{ github.run_number }}
           body: |
             Device profile: ${{ env.PROFILE }}
             Source commit: ${{ github.sha }}
