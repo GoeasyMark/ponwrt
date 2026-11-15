@@ -1,0 +1,241 @@
+name: Build PonWrt Airoha - Five Device Profiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "选择设备；all 会并行编译五款设备（含 AN7583）"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - 040g-md
+          - 5585-ct
+          - 5585-cu
+          - zn515
+          - 040g-mf
+      upload_release:
+        description: "是否发布到 GitHub Releases"
+        required: false
+        default: false
+        type: boolean
+      cache_mode:
+        description: "编译缓存模式"
+        required: false
+        default: cache
+        type: choice
+        options:
+          - cache
+          - rebuild
+          - no-cache
+  push:
+    branches:
+      - master
+    paths:
+      - "configs/**"
+      - "files/**"
+      - "scripts/**"
+      - "target/**"
+      - "package/**"
+      - ".github/workflows/build-an7581-four-devices.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.device || 'push' }}
+  cancel-in-progress: false
+
+env:
+  CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+  CCACHE_MAXSIZE: 5G
+
+jobs:
+  build:
+    name: Build ${{ matrix.device }}
+    if: ${{ github.event_name == 'push' || inputs.device == 'all' || inputs.device == matrix.device }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [040g-md, 5585-ct, 5585-cu, zn515, 040g-mf]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free build space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get clean
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::ForceIPv4=true install -y --no-install-recommends \
+            asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio \
+            curl device-tree-compiler flex gawk gettext git g++-multilib gcc-multilib gperf help2man intltool \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev \
+            libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev lld llvm ninja-build p7zip-full \
+            patch pkgconf python3 python3-docutils python3-pip python3-ply python3-pyelftools qemu-utils \
+            re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
+
+      - name: Configure device profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.device }}" in
+            040g-mf)
+              PROFILE="nokia_xg-040g-mf-ubi"
+              SUBTARGET="an7583"
+              DEVICE_CONFIG="configs/an7583.config"
+              ;;
+            040g-md)
+              PROFILE="nokia_xg-040g-md-ubi"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
+              ;;
+            5585-ct)
+              PROFILE="fiberhome_hg5585f-ct"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
+              ;;
+            5585-cu)
+              PROFILE="fiberhome_hg5585f-cu"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
+              ;;
+            zn515)
+              PROFILE="znxt_zn515xg-d"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
+              ;;
+            *)
+              echo "Unknown device: ${{ matrix.device }}" >&2
+              exit 1
+              ;;
+          esac
+          ./scripts/kconfig.pl + "$DEVICE_CONFIG" configs/release.config > .config
+          echo "PROFILE=$PROFILE" >> "$GITHUB_ENV"
+          echo "SUBTARGET=$SUBTARGET" >> "$GITHUB_ENV"
+          python3 - "$PROFILE" <<'PY'
+          import re, sys
+          profile = sys.argv[1]
+          path = ".config"
+          with open(path, encoding="utf-8") as f:
+              lines = f.readlines()
+          subtarget = "an7583" if profile == "nokia_xg-040g-mf-ubi" else "an7581"
+          prefix = "CONFIG_TARGET_DEVICE_airoha_" + subtarget + "_DEVICE_"
+          selected = prefix + profile
+          found = False
+          out = []
+          for line in lines:
+              m = re.match(r"^(?:# )?(" + re.escape(prefix) + r"[^ =]+)(?:=y| is not set)$", line.rstrip("\n"))
+              if m:
+                  key = m.group(1)
+                  if key == selected:
+                      out.append(key + "=y\n")
+                      found = True
+                  else:
+                      out.append("# " + key + " is not set\n")
+              else:
+                  out.append(line)
+          if not found:
+              raise SystemExit("Profile symbol not found in merged .config: " + selected)
+          with open(path, "w", encoding="utf-8") as f:
+              f.writelines(out)
+          print("Selected exactly one device-specific rootfs profile:", profile)
+          PY
+          make defconfig
+          grep -E "^CONFIG_TARGET_DEVICE_airoha_${SUBTARGET}_DEVICE_.*=y$" .config
+          test "$(grep -cE "^CONFIG_TARGET_DEVICE_airoha_${SUBTARGET}_DEVICE_.*=y$" .config)" -eq 1
+
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Prepare custom packages
+        run: bash ./scripts/customize.sh
+
+      - name: Restore compiler cache
+        if: inputs.cache_mode != 'no-cache' && inputs.cache_mode != 'rebuild'
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ponwrt-airoha-${{ matrix.device }}-${{ hashFiles('configs/*.config') }}-${{ github.sha }}
+          restore-keys: |
+            ponwrt-an7581-${{ matrix.device }}-${{ hashFiles('configs/*.config') }}-
+            ponwrt-an7581-${{ matrix.device }}-
+
+      - name: Clean compiler cache for rebuild
+        if: inputs.cache_mode == 'rebuild'
+        run: rm -rf .ccache
+
+      - name: Enable ccache
+        if: inputs.cache_mode != 'no-cache'
+        run: |
+          sed -i '/^CONFIG_DEVEL=/d; /^CONFIG_CCACHE=/d' .config
+          printf 'CONFIG_DEVEL=y\nCONFIG_CCACHE=y\n' >> .config
+          make defconfig
+
+      - name: Download package sources
+        run: make download -j"$(nproc)"
+
+      - name: Compile firmware
+        run: |
+          [ -x staging_dir/host/bin/ccache ] && CCACHE_DIR="$PWD/.ccache" staging_dir/host/bin/ccache -z || true
+          make -j"$(nproc)" || make -j1 V=s
+
+      - name: Save compiler cache
+        if: always() && inputs.cache_mode != 'no-cache'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ponwrt-an7581-${{ matrix.device }}-${{ hashFiles('configs/*.config') }}-${{ github.sha }}
+
+      - name: Collect firmware and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          case "${{ matrix.device }}" in
+            040g-md) PATTERN="*nokia_xg-040g-md-ubi*" ;;
+            5585-ct) PATTERN="*hg5585f-ct*" ;;
+            5585-cu) PATTERN="*hg5585f-cu*" ;;
+            zn515) PATTERN="*zn515xg-d*" ;;
+            040g-mf) PATTERN="*nokia_xg-040g-mf-ubi*" ;;
+          esac
+          TARGET_DIR="bin/targets/airoha/${SUBTARGET}"
+          find "$TARGET_DIR" -type f \
+            \( -name "$PATTERN" -o -name "*${PROFILE}*" \) \
+            \( -name "*.itb" -o -name "*.bin" -o -name "*.fip" -o -name "*manifest*" \) \
+            -exec cp -v {} output/ \;
+          test -n "$(find output -maxdepth 1 -type f -name '*.itb' -print -quit)"
+          (cd output && find . -maxdepth 1 -type f \
+            \( -name "*.itb" -o -name "*.bin" -o -name "*.fip" \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          echo "=== ${{ matrix.device }} artifacts ==="
+          ls -lh output
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PonWrt-Airoha-${{ matrix.device }}-${{ github.run_number }}
+          path: output/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish device release
+        if: inputs.upload_release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: airoha-${{ matrix.device }}-${{ github.run_number }}
+          name: PonWrt Airoha ${{ matrix.device }} build ${{ github.run_number }}
+          body: |
+            Device profile: ${{ env.PROFILE }}
+            Source commit: ${{ github.sha }}
+            Build workflow: ${{ github.workflow }}
+          files: output/*
