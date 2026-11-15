@@ -159,7 +159,10 @@ jobs:
           ./scripts/feeds install -a
 
       - name: Prepare custom packages
-        run: bash ./scripts/customize.sh
+        run: |
+          bash ./scripts/customize.sh
+          # Re-scan packages added after feeds installation (including OpenClash).
+          make defconfig
 
       - name: Restore compiler cache
         if: inputs.cache_mode != 'no-cache' && inputs.cache_mode != 'rebuild'
