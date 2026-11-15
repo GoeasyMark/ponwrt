@@ -1,10 +1,10 @@
-name: Build PonWrt AN7581 - Four Device Profiles
+name: Build PonWrt Airoha - Five Device Profiles
 
 on:
   workflow_dispatch:
     inputs:
       device:
-        description: "选择设备；all 会并行编译四款设备"
+        description: "选择设备；all 会并行编译五款设备（含 AN7583）"
         required: true
         default: all
         type: choice
@@ -14,6 +14,7 @@ on:
           - 5585-ct
           - 5585-cu
           - zn515
+          - 040g-mf
       upload_release:
         description: "是否发布到 GitHub Releases"
         required: false
@@ -59,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device: [040g-md, 5585-ct, 5585-cu, zn515]
+        device: [040g-md, 5585-ct, 5585-cu, zn515, 040g-mf]
 
     steps:
       - name: Checkout repository
@@ -86,33 +87,48 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
           case "${{ matrix.device }}" in
+            040g-mf)
+              PROFILE="nokia_xg-040g-mf-ubi"
+              SUBTARGET="an7583"
+              DEVICE_CONFIG="configs/an7583.config"
+              ;;
             040g-md)
               PROFILE="nokia_xg-040g-md-ubi"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
               ;;
             5585-ct)
               PROFILE="fiberhome_hg5585f-ct"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
               ;;
             5585-cu)
               PROFILE="fiberhome_hg5585f-cu"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
               ;;
             zn515)
               PROFILE="znxt_zn515xg-d"
+              SUBTARGET="an7581"
+              DEVICE_CONFIG="configs/an7581.config"
               ;;
             *)
               echo "Unknown device: ${{ matrix.device }}" >&2
               exit 1
               ;;
           esac
+          ./scripts/kconfig.pl + "$DEVICE_CONFIG" configs/release.config > .config
           echo "PROFILE=$PROFILE" >> "$GITHUB_ENV"
+          echo "SUBTARGET=$SUBTARGET" >> "$GITHUB_ENV"
           python3 - "$PROFILE" <<'PY'
           import re, sys
           profile = sys.argv[1]
           path = ".config"
           with open(path, encoding="utf-8") as f:
               lines = f.readlines()
-          prefix = "CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_"
+          subtarget = "an7583" if profile == "nokia_xg-040g-mf-ubi" else "an7581"
+          prefix = "CONFIG_TARGET_DEVICE_airoha_" + subtarget + "_DEVICE_"
           selected = prefix + profile
           found = False
           out = []
@@ -128,14 +144,14 @@ jobs:
               else:
                   out.append(line)
           if not found:
-              raise SystemExit("Profile symbol not found in configs/an7581.config: " + selected)
+              raise SystemExit("Profile symbol not found in " + __import__("os").environ.get("DEVICE_CONFIG", "device config") + ": " + selected)
           with open(path, "w", encoding="utf-8") as f:
               f.writelines(out)
           print("Selected exactly one device-specific rootfs profile:", profile)
           PY
           make defconfig
-          grep -E "^CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_.*=y$" .config
-          test "$(grep -cE '^CONFIG_TARGET_DEVICE_airoha_an7581_DEVICE_.*=y$' .config)" -eq 1
+          grep -E "^CONFIG_TARGET_DEVICE_airoha_${SUBTARGET}_DEVICE_.*=y$" .config
+          test "$(grep -cE "^CONFIG_TARGET_DEVICE_airoha_${SUBTARGET}_DEVICE_.*=y$" .config)" -eq 1
 
       - name: Update and install feeds
         run: |
@@ -191,13 +207,16 @@ jobs:
             5585-ct) PATTERN="*hg5585f-ct*" ;;
             5585-cu) PATTERN="*hg5585f-cu*" ;;
             zn515) PATTERN="*zn515xg-d*" ;;
+            040g-mf) PATTERN="*nokia_xg-040g-mf-ubi*" ;;
           esac
-          find bin/targets/airoha/an7581 -type f \
+          TARGET_DIR="bin/targets/airoha/${SUBTARGET}"
+          find "$TARGET_DIR" -type f \
             \( -name "$PATTERN" -o -name "*${PROFILE}*" \) \
-            \( -name "*sysupgrade.itb" -o -name "*recovery.itb" -o -name "*manifest" \) \
+            \( -name "*.itb" -o -name "*.bin" -o -name "*.fip" -o -name "*manifest*" \) \
             -exec cp -v {} output/ \;
           test -n "$(find output -maxdepth 1 -type f -name '*.itb' -print -quit)"
-          (cd output && sha256sum *.itb > SHA256SUMS)
+          (cd output && find . -maxdepth 1 -type f \
+            \( -name "*.itb" -o -name "*.bin" -o -name "*.fip" \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
           echo "=== ${{ matrix.device }} artifacts ==="
           ls -lh output
 
