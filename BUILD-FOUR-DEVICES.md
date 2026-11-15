@@ -12,12 +12,12 @@
 | `zn515` | `znxt_zn515xg-d` | ZNXT ZN515XG-D |
 | `040g-mf` | `nokia_xg-040g-mf-ubi` | Nokia XG-040G-MF（AN7583 / UBI） |
 
-每个矩阵任务重新合并 `configs/an7581.config` 和 `configs/release.config`，然后将设备专属 rootfs profile 限定为单一机型。五个任务独立编译、独立缓存、独立上传 Artifact，并生成 SHA256 校验文件。
+每个矩阵任务按 SoC 选择配置：四款 AN7581 设备使用 `configs/an7581.config`，040G-MF 使用 `configs/an7583.config`；随后均叠加 `configs/release.config`，并将对应子目标下的设备专属 rootfs profile 限定为单一机型。五个任务独立编译、独立缓存、独立上传 Artifact，并生成 SHA256 校验文件。
 
 ## 启动方式
 
 1. 打开仓库 GitHub Actions。
-2. 选择 **Build PonWrt AN7581 - Four Device Profiles**。
+2. 选择 **Build PonWrt Airoha - Five Device Profiles**。
 3. 点击 **Run workflow**。
 4. `device=all` 并行编译五款；也可以只选其中一款。
 5. 编译完成后，在对应 Job 的 Artifacts 下载固件与 `SHA256SUMS`。
