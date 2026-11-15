@@ -40,13 +40,29 @@ if [ ! -d "./package/luci-theme-footstrap" ]; then
     rm -rf "$tmp_theme"
 fi
 
-# 4. 集成 Kahen 精华：自动连接 autocore 温度检测至 LuCI 状态界面
+
+# 4. 集成 OpenClash LuCI（源码独立于 feeds；Mihomo 核心由 OpenClash 界面下载/更新）
+if [ ! -d "./package/luci-app-openclash" ]; then
+    echo "--> Cloning OpenClash LuCI package..."
+    tmp_openclash="$(mktemp -d)"
+    git clone --depth 1 --filter=blob:none --sparse https://github.com/vernesong/OpenClash.git "$tmp_openclash/OpenClash"
+    git -C "$tmp_openclash/OpenClash" sparse-checkout set luci-app-openclash
+    cp -a "$tmp_openclash/OpenClash/luci-app-openclash" ./package/luci-app-openclash
+    rm -rf "$tmp_openclash"
+else
+    echo "[OK] luci-app-openclash is present"
+fi
+
+# OpenClash 是在 feeds install 后注入的本地包，清除旧的包索引以便重新扫描
+rm -f ./tmp/.packageinfo ./tmp/.config-package.in 2>/dev/null || true
+
+# 5. 集成 Kahen 精华：自动连接 autocore 温度检测至 LuCI 状态界面
 if [ -f "./scripts/integrate-temperature.py" ]; then
     echo "--> Running temperature integration..."
     python3 ./scripts/integrate-temperature.py . || true
 fi
 
-# 5. 集成 NNdroid 关键优化：EN7572 激光冷启动防抖 & LOID 补零方向与原始报文字节展示
+# 6. 集成 NNdroid 关键优化：EN7572 激光冷启动防抖 & LOID 补零方向与原始报文字节展示
 TOP_DIR="$(pwd)"
 if [ -d "./feeds/pon_drivers" ] && [ -f "$TOP_DIR/patches/01-pon-drivers-epon-laser-recovery.patch" ]; then
     echo "--> Applying EN7572 burst laser latch recovery patch to pon_drivers..."
@@ -66,7 +82,7 @@ if [ -d "./feeds/pon_userspace" ] && [ -f "$TOP_DIR/patches/03-pon-userspace-ipt
     ./scripts/feeds install -p pon_userspace -f || true
 fi
 
-# 6. 升级 sing-box 核心至 1.15.0-alpha.13（支持 endpoints[].on_demand 等 1.15+ 新版配置语法）
+# 7. 升级 sing-box 核心至 1.15.0-alpha.13（支持 endpoints[].on_demand 等 1.15+ 新版配置语法）
 # OpenWrt APK v3 禁止 PKG_VERSION 包含 '-'，因此包版本使用 1.15.0_alpha13，源码与二进制版本号保留 1.15.0-alpha.13
 SING_BOX_MK="./feeds/packages/net/sing-box/Makefile"
 if [ -f "$SING_BOX_MK" ] && ! grep -q "PKG_UPSTREAM_VERSION:=1.15.0-alpha.13" "$SING_BOX_MK"; then
@@ -112,7 +128,7 @@ PYEOF
     rm -f ./tmp/.packageinfo ./tmp/.config-package.in 2>/dev/null || true
 fi
 
-# 7. 规避 Airoha 架构下非必要 feed 循环依赖 (如无用的 squeezelite 音频)
+# 8. 规避 Airoha 架构下非必要 feed 循环依赖 (如无用的 squeezelite 音频)
 if [ -L "./package/feeds/packages/squeezelite" ]; then
     rm -f "./package/feeds/packages/squeezelite"
 fi
