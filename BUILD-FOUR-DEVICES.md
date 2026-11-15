@@ -24,7 +24,11 @@
 
 ## 注意事项
 
-- 本工作流复用当前仓库的完整功能配置，包括 LuCI、Momo/Sing-box、IPTV、DDNS、NFQUEUE、WireGuard 内核支持、网络诊断与无线驱动等。
+- 本工作流复用当前仓库的完整功能配置，包括 LuCI、Momo/Sing-box、OpenClash、OpenVPN Server、DDNS-GO、SmartDNS、IPTV、传统 DDNS、NFQUEUE、WireGuard 内核支持、网络诊断与无线驱动等。
+- OpenClash 预装 LuCI 管理包及依赖；Mihomo/Clash 核心不嵌入固件，首次使用时从 OpenClash 界面下载/更新。
+- OpenVPN 使用 `luci-app-openvpn-server` 管理界面，搭配 `openvpn-openssl`、`openvpn-easy-rsa` 和 `kmod-tun`。
+- DDNS-GO 使用独立的 `ddns-go` 服务及 `luci-app-ddns-go` 管理界面，不替代原有 `luci-app-ddns`。
+- SmartDNS 预装服务及 LuCI 管理界面，但不强制改写 DNS 监听端口；启用时应先协调 dnsmasq 与 OpenClash 的 DNS 端口/上游设置。
 - HG5585F CU 使用独立 CU DTS 和内部交换 PHY 映射；CT 的 GPY211 外置 PHY 配置不会套用到 CU。
 - Nokia XG-040G-MF 使用 AN7583 子目标、`configs/an7583.config`、独立 MF DTS，以及 AN7583 对应的 BL2/BL31 和 U-Boot 构建产物；不能使用 AN7581 的 MD 引导文件或固件。
 - 040G-MD、040G-MF、HG5585F CT/CU、ZN515 的 SoC、DTS、分区与设备校准数据不同，严禁跨机型刷写。
