@@ -86,6 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
           case "${{ matrix.device }}" in
             040g-md)
               PROFILE="nokia_xg-040g-md-ubi"
